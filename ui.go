@@ -198,15 +198,22 @@ func (u *UI) refreshMeta(force bool) {
 			u.metaBusy = false
 			if err != nil {
 				log.Printf("services: %v", err)
+				u.chErr["services"] = err.Error()
 				return
 			}
+			log.Printf("services: %d listed for %s", len(svcs), u.env.Config.Region)
 			u.guide.Services = svcs
 			u.guide.ServicesAt = u.env.Now()
 			if gerr == nil && len(genres) > 0 {
 				u.guide.Genres = genres
 			}
+			before := u.channel()
 			u.rebuildLineup()
 			u.dirty = true
+			// a service channel tuned before the list arrived can load now
+			if ch := u.channel(); ch != nil && before != nil && before.Providers == "" && ch.Providers != "" && u.scr == scrGuide {
+				u.fetchChannel(ch, false)
+			}
 		}
 	}()
 }
@@ -225,8 +232,11 @@ func (u *UI) tune(i int) {
 	u.reloadShows(0)
 	ch := u.channel()
 	l := u.guide.Lists[ch.Key]
-	if l == nil || time.Since(l.At) > time.Duration(u.env.Config.RefreshHours)*time.Hour {
+	if l == nil || len(l.IDs) == 0 || time.Since(l.At) > time.Duration(u.env.Config.RefreshHours)*time.Hour {
 		u.fetchChannel(ch, false)
+	}
+	if ch.Kind == chService && ch.Providers == "" && len(u.guide.Services) == 0 {
+		u.refreshMeta(true) // the service list never arrived; ask again
 	}
 	u.moved = time.Now()
 }
@@ -262,6 +272,11 @@ func (u *UI) fetchChannel(ch *Channel, manual bool) {
 		shows, err := u.env.Discover(ctx, &c, perChan)
 		u.post <- func() {
 			delete(u.chLoading, c.Key)
+			if err != nil {
+				log.Printf("CH %02d %s failed: %v", c.Num, c.Name, err)
+			} else {
+				log.Printf("CH %02d %s: %d shows", c.Num, c.Name, len(shows))
+			}
 			if err != nil {
 				msg := netHint(err).Error()
 				u.chErr[c.Key] = msg
@@ -659,6 +674,9 @@ func (u *UI) keyGuide(k int) {
 	case BtnSelect:
 		if ch := u.channel(); ch != nil {
 			u.showToast("REFRESHING CH " + fmt.Sprintf("%02d", ch.Num))
+			if ch.Kind == chService && ch.Providers == "" {
+				u.refreshMeta(true)
+			}
 			u.fetchChannel(ch, true)
 			u.syncSonarr()
 		}

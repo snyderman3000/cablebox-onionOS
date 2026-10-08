@@ -389,7 +389,7 @@ func TestTMDB(t *testing.T) {
 	if strings.Join(names, ",") != "NETFLIX,HBO MAX,PARAMOUNT+" {
 		t.Errorf("services offered in the region only: %v", names)
 	}
-	q := env.channelQuery(lu[4], 1)
+	q := env.channelQuery(lu[4], 1, false)
 	if q.Get("with_watch_providers") != "8|1796" || q.Get("watch_region") != "US" {
 		t.Errorf("service query %v", q)
 	}
@@ -527,5 +527,32 @@ func TestOrderFlow(t *testing.T) {
 	u.Key(BtnStart)
 	if u.scr != scrLineup {
 		t.Errorf("START opens the channel guide")
+	}
+}
+
+// If TMDB empties (or rejects) the filtered listing, the plain query is used.
+func TestDiscoverFallback(t *testing.T) {
+	var queries []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		queries = append(queries, r.URL.RawQuery)
+		if r.URL.Query().Get("with_watch_monetization_types") != "" {
+			fmt.Fprint(w, `{"page":1,"total_pages":0,"results":[]}`)
+			return
+		}
+		fmt.Fprint(w, `{"page":1,"total_pages":1,"results":[{"id":1,"name":"Plain Show"}]}`)
+	}))
+	defer srv.Close()
+	env := &Env{Config: defaultConfig(), HTTP: srv.Client(), TMDBBase: srv.URL, Now: time.Now}
+	env.Config.TMDBKey = "k"
+	shows, err := env.Discover(context.Background(), &Channel{Num: 4, Name: "POPULAR", Kind: chPopular}, 40)
+	if err != nil || len(shows) != 1 || len(queries) != 2 {
+		t.Fatalf("fallback: %v %d %v", err, len(shows), queries)
+	}
+	if !strings.Contains(queries[0], "without_genres=10767%7C10763%7C10766") {
+		t.Errorf("talk, news and soaps are excluded with OR: %s", queries[0])
+	}
+	q := env.channelQuery(&Channel{Kind: chGenre, Genre: 10767}, 1, false)
+	if q.Get("without_genres") != "10763|10766" {
+		t.Errorf("a genre channel doesn't exclude itself: %q", q.Get("without_genres"))
 	}
 }

@@ -361,8 +361,13 @@ func (u *UI) drawGuide(c *Canvas) {
 		if e := u.chErr[ch.Key]; e != "" {
 			lines = u.fSmall.Wrap(sentence(e), bw-u.px(20))
 		} else if ch.Kind == chService && ch.Providers == "" {
-			lines = u.fSmall.Wrap("This service isn't listed for your region yet.", bw-u.px(20))
+			why := "Waiting for TMDB's list of streaming services."
+			if e := u.chErr["services"]; e != "" {
+				why = "TMDB's list of streaming services didn't load: " + e
+			}
+			lines = u.fSmall.Wrap(why, bw-u.px(20))
 		}
+		lines = append(lines, "", "SELECT tries again.")
 		bh := u.px(46) + len(lines)*(u.fSmall.height+u.px(2))
 		by := u.listTop() + (listH-bh)/2
 		c.Fill(bx, by, bw, bh, colGuide2)

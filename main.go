@@ -16,7 +16,7 @@ import (
 	"time"
 )
 
-const version = "0.1.0"
+const version = "0.1.1"
 const userAgent = "Cablebox/" + version + " (OnionOS TV guide)"
 
 // Config lives in App/Cablebox/data/config.json.

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"sort"
@@ -87,7 +88,11 @@ func (env *Env) tmdbGet(ctx context.Context, path string, q url.Values, v any) e
 		}
 		switch {
 		case resp.StatusCode == 200:
-			return json.Unmarshal(body, v)
+			if err := json.Unmarshal(body, v); err != nil {
+				log.Printf("TMDB %s: can't read the answer (%v): %.300s", path, err, body)
+				return err
+			}
+			return nil
 		case resp.StatusCode == 429 || resp.StatusCode >= 500:
 			if attempt < 3 {
 				wait := time.Duration(attempt+1) * 2 * time.Second
@@ -143,19 +148,22 @@ type discoverTVPage struct {
 }
 
 // channelQuery builds the discover query for a channel.
-func (env *Env) channelQuery(ch *Channel, page int) url.Values {
+// plain drops the optional filters, as a fallback when TMDB rejects or empties a listing.
+func (env *Env) channelQuery(ch *Channel, page int, plain bool) url.Values {
 	cfg := env.Config
 	now := env.Now()
 	day := func(d int) string { return now.AddDate(0, 0, d).Format("2006-01-02") }
 	q := url.Values{}
 	q.Set("language", cfg.Language)
 	q.Set("watch_region", cfg.Region)
-	q.Set("with_watch_monetization_types", "flatrate|free|ads")
-	q.Set("include_null_first_air_dates", "false")
 	q.Set("sort_by", "popularity.desc")
 	q.Set("page", strconv.Itoa(page))
-	// keep talk shows, news and soaps out of the general channels
-	q.Set("without_genres", "10767,10763,10766")
+	if !plain {
+		q.Set("with_watch_monetization_types", "flatrate|free|ads")
+		q.Set("include_null_first_air_dates", "false")
+		// keep talk shows, news and soaps out of the general channels
+		q.Set("without_genres", "10767|10763|10766")
+	}
 	switch ch.Kind {
 	case chNew:
 		q.Set("first_air_date.gte", day(-120))
@@ -170,18 +178,49 @@ func (env *Env) channelQuery(ch *Channel, page int) url.Values {
 		q.Set("with_watch_providers", ch.Providers)
 	case chGenre:
 		q.Set("with_genres", strconv.Itoa(ch.Genre))
-		q.Set("without_genres", strings.Trim(strings.ReplaceAll(","+"10767,10763,10766"+",", ","+strconv.Itoa(ch.Genre)+",", ","), ","))
+		if !plain {
+			q.Set("without_genres", strings.Trim(strings.ReplaceAll("|10767|10763|10766|", "|"+strconv.Itoa(ch.Genre)+"|", "|"), "|"))
+		}
 	}
 	return q
 }
 
-// Discover lists a channel's shows, most popular first.
+// Discover lists a channel's shows, most popular first. If TMDB refuses the
+// full query or returns nothing, it tries again without the optional filters.
 func (env *Env) Discover(ctx context.Context, ch *Channel, max int) ([]*Show, error) {
+	out, err := env.discover(ctx, ch, max, false)
+	if (err == nil && len(out) == 0) || retryPlain(err) {
+		log.Printf("CH %02d %s: %d shows, err=%v — retrying without the extra filters", ch.Num, ch.Name, len(out), err)
+		if out2, err2 := env.discover(ctx, ch, max, true); err2 == nil && len(out2) > 0 {
+			return out2, nil
+		} else if err == nil {
+			err = err2
+		}
+	}
+	return out, err
+}
+
+// retryPlain: worth trying the simpler query (not for a bad key, rate limit or no network).
+func retryPlain(err error) bool {
+	var ae *APIError
+	if !errors.As(err, &ae) {
+		var se *json.SyntaxError
+		var te *json.UnmarshalTypeError
+		return errors.As(err, &se) || errors.As(err, &te)
+	}
+	return ae.Status != 401 && ae.Status != 429 && ae.Status < 500
+}
+
+func (env *Env) discover(ctx context.Context, ch *Channel, max int, plain bool) ([]*Show, error) {
 	var out []*Show
 	seen := map[int]bool{}
 	for page := 1; page <= 5 && len(out) < max; page++ {
 		var dp discoverTVPage
-		if err := env.tmdbGet(ctx, "/discover/tv", env.channelQuery(ch, page), &dp); err != nil {
+		q := env.channelQuery(ch, page, plain)
+		err := env.tmdbGet(ctx, "/discover/tv", q, &dp)
+		q.Del("api_key")
+		log.Printf("CH %02d %s page %d: %d results, %d pages, err=%v [%s]", ch.Num, ch.Name, page, len(dp.Results), dp.TotalPages, err, q.Encode())
+		if err != nil {
 			if len(out) > 0 {
 				break
 			}
