@@ -587,3 +587,24 @@ func TestRedactKey(t *testing.T) {
 		t.Errorf("redact: %v", err)
 	}
 }
+
+// TMDB's CDN speaks HTTP/2; the client must still get plain HTTP/1.1 answers.
+func TestTransportAgainstHTTP2Server(t *testing.T) {
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"proto":%q}`, r.Proto)
+	}))
+	srv.EnableHTTP2 = true
+	srv.StartTLS()
+	defer srv.Close()
+	tr := newTransport()
+	tr.TLSClientConfig.RootCAs = srv.Client().Transport.(*http.Transport).TLSClientConfig.RootCAs
+	resp, err := (&http.Client{Transport: tr}).Get(srv.URL)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	b, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(b), "HTTP/1.1") {
+		t.Errorf("expected HTTP/1.1, got %s", b)
+	}
+}

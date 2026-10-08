@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"image/png"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +18,7 @@ import (
 	"time"
 )
 
-const version = "0.1.2"
+const version = "0.1.3"
 const userAgent = "Cablebox/" + version + " (OnionOS TV guide)"
 
 // Config lives in App/Cablebox/data/config.json.
@@ -69,17 +70,30 @@ func newEnv() *Env {
 	}
 	os.MkdirAll(env.DataDir, 0o755)
 	env.Config = loadConfig(filepath.Join(env.DataDir, "config.json"), filepath.Join(appDir, "..", "Rewind", "data", "config.json"))
-	tr := http.DefaultTransport.(*http.Transport).Clone()
-	tr.MaxIdleConns = 8
-	tr.MaxIdleConnsPerHost = 4
-	tr.MaxConnsPerHost = 4
-	tr.ResponseHeaderTimeout = 20 * time.Second
-	// plain HTTP/1.1: one slow answer (a poster, a big details page) can't hold up
-	// everything else the way it can on a single shared HTTP/2 connection
-	tr.ForceAttemptHTTP2 = false
-	tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	tr := newTransport()
 	env.HTTP = &http.Client{Transport: tr, Timeout: 30 * time.Second}
 	return env
+}
+
+// newTransport makes plain HTTP/1.1 connections: one slow answer (a poster, a
+// big details page) can't hold up everything else the way it can on a single
+// shared HTTP/2 connection. HTTP/2 has to be left out of the TLS handshake
+// (ALPN) too, or servers answer in HTTP/2 anyway.
+func newTransport() *http.Transport {
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSClientConfig:       &tls.Config{NextProtos: []string{"http/1.1"}},
+		TLSNextProto:          map[string]func(string, *tls.Conn) http.RoundTripper{},
+		ForceAttemptHTTP2:     false,
+		TLSHandshakeTimeout:   15 * time.Second,
+		MaxIdleConns:          8,
+		MaxIdleConnsPerHost:   4,
+		MaxConnsPerHost:       4,
+		IdleConnTimeout:       60 * time.Second,
+		ResponseHeaderTimeout: 20 * time.Second,
+		ExpectContinueTimeout: time.Second,
+	}
 }
 
 // loadConfig reads config.json, filling in defaults; TMDB and OMDb keys are
