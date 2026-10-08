@@ -580,3 +580,10 @@ func TestDetailsWaitForListing(t *testing.T) {
 		t.Errorf("two detail lookups at a time, got %d", len(u.detBusy))
 	}
 }
+
+func TestRedactKey(t *testing.T) {
+	err := redactKey(fmt.Errorf(`Get "https://x/?api_key=secret123": timeout`), "secret123")
+	if strings.Contains(err.Error(), "secret123") || !strings.Contains(err.Error(), "api_key=***") {
+		t.Errorf("redact: %v", err)
+	}
+}

@@ -76,6 +76,7 @@ func (env *Env) tmdbGet(ctx context.Context, path string, q url.Values, v any) e
 		t0 := time.Now()
 		resp, err := env.HTTP.Do(req)
 		if err != nil {
+			err = redactKey(err, key)
 			log.Printf("TMDB %s: attempt %d failed after %s: %v", path, attempt+1, time.Since(t0).Round(time.Millisecond), err)
 			if attempt < 2 && ctx.Err() == nil {
 				env.HTTP.CloseIdleConnections() // a stalled connection shouldn't be reused
@@ -637,3 +638,19 @@ func netHint(err error) error {
 	}
 	return err
 }
+
+// redactKey keeps the API key out of error messages and the log.
+func redactKey(err error, key string) error {
+	if key == "" || !strings.Contains(err.Error(), key) {
+		return err
+	}
+	return &redacted{err, strings.ReplaceAll(err.Error(), key, "***")}
+}
+
+type redacted struct {
+	err error
+	msg string
+}
+
+func (r *redacted) Error() string { return r.msg }
+func (r *redacted) Unwrap() error { return r.err }

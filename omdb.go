@@ -46,7 +46,7 @@ func (env *Env) Scores(ctx context.Context, s *Show) error {
 	req.Header.Set("User-Agent", userAgent)
 	resp, err := env.HTTP.Do(req)
 	if err != nil {
-		return err
+		return redactKey(err, key)
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
