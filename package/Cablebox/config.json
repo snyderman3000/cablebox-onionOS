@@ -1,0 +1,6 @@
+{
+  "label": "Cablebox",
+  "icon": "/mnt/SDCARD/App/Cablebox/icon.png",
+  "launch": "launch.sh",
+  "description": "TV guide and Sonarr remote"
+}

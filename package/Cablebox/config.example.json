@@ -1,0 +1,12 @@
+{
+  "tmdb_api_key": "PASTE YOUR TMDB API KEY HERE (or leave blank to use Rewind's)",
+  "omdb_api_key": "PASTE YOUR OMDB API KEY HERE",
+  "region": "US",
+  "language": "en-US",
+  "services": ["Netflix", "Hulu", "Prime Video", "Disney+", "HBO Max", "Apple TV", "Paramount+", "Peacock"],
+
+  "sonarr_url": "192.168.4.34:8989",
+  "sonarr_api_key": "FROM SONARR → SETTINGS → GENERAL",
+  "sonarr_quality_profile": "",
+  "sonarr_root_folder": ""
+}

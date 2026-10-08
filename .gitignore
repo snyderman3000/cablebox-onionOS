@@ -1,0 +1,8 @@
+/dist/
+/package/Cablebox/cablebox
+/package/Cablebox/data/
+/cablebox
+/shots/
+go.work
+go.work.sum
+*.png.tmp
