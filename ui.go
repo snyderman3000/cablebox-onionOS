@@ -58,6 +58,7 @@ type UI struct {
 	moved  time.Time
 
 	chLoading map[string]bool
+	chSince   map[string]time.Time
 	chErr     map[string]string
 	metaBusy  bool // services and genres
 
@@ -108,7 +109,7 @@ func NewUI(env *Env, w, h int) *UI {
 		s = sw
 	}
 	u := &UI{env: env, W: w, H: h, s: s, post: make(chan func(), 256),
-		guide: newGuide(), chLoading: map[string]bool{}, chErr: map[string]string{},
+		guide: newGuide(), chLoading: map[string]bool{}, chSince: map[string]time.Time{}, chErr: map[string]string{},
 		detBusy: map[int]bool{}, detErr: map[int]bool{}, omdbBusy: map[int]bool{},
 		imgs: map[string]*image.RGBA{}, imgBusy: map[string]bool{}, imgErr: map[string]bool{}, imgSlots: make(chan struct{}, 2)}
 	u.fLogo = loadFont(titleTTF, 21*s)
@@ -264,12 +265,29 @@ func (u *UI) fetchChannel(ch *Channel, manual bool) {
 		return
 	}
 	u.chLoading[ch.Key] = true
+	u.chSince[ch.Key] = time.Now()
 	delete(u.chErr, ch.Key)
 	c := *ch
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 		defer cancel()
-		shows, err := u.env.Discover(ctx, &c, perChan)
+		// show the first page as soon as it arrives
+		first := true
+		shows, err := u.env.Discover(ctx, &c, perChan, func(part []*Show) {
+			if !first {
+				return
+			}
+			first = false
+			u.post <- func() {
+				if len(u.guide.ChannelShows(c.Key)) > 0 {
+					return // keep the cached listing until the full one is in
+				}
+				u.guide.Merge(c.Key, part, time.Time{}) // zero time: still counts as stale
+				if cur := u.channel(); cur != nil && cur.Key == c.Key {
+					u.reloadShows(0)
+				}
+			}
+		})
 		u.post <- func() {
 			delete(u.chLoading, c.Key)
 			if err != nil {
@@ -374,9 +392,18 @@ func (u *UI) needsScores(s *Show) bool {
 		(s.ScoresAt.IsZero() || u.env.Now().Sub(s.ScoresAt) > scoresTTL)
 }
 
-// dispatchDetails keeps up to three detail lookups and two score lookups
-// running, nearest the cursor first.
+// dispatchDetails keeps up to two detail lookups and one score lookup
+// running for the shows near the cursor. It waits while a channel listing or
+// the service list is loading, so those come first.
 func (u *UI) dispatchDetails() {
+	if u.metaBusy {
+		return
+	}
+	for _, b := range u.chLoading {
+		if b {
+			return
+		}
+	}
 	busy, sb := 0, 0
 	for _, b := range u.detBusy {
 		if b {
@@ -392,23 +419,25 @@ func (u *UI) dispatchDetails() {
 	if u.cur != nil && (u.scr == scrDetail || u.scr == scrPick || u.modal == modalOrder) {
 		order = append(order, u.cur)
 	}
-	for d := 0; d < len(u.shows); d++ {
-		if i := u.sel + d; i < len(u.shows) {
-			order = append(order, u.shows[i])
-		}
-		if i := u.sel - d; d > 0 && i >= 0 && d < 4 {
-			order = append(order, u.shows[i])
+	if u.scr == scrGuide || u.scr == scrDetail {
+		for d := 0; d <= 10; d++ {
+			if i := u.sel + d; i < len(u.shows) {
+				order = append(order, u.shows[i])
+			}
+			if i := u.sel - d; d > 0 && d <= 2 && i >= 0 {
+				order = append(order, u.shows[i])
+			}
 		}
 	}
 	for _, s := range order {
-		if busy >= 3 && sb >= 2 {
+		if busy >= 2 && sb >= 1 {
 			return
 		}
-		if busy < 3 && u.needsDetails(s) {
+		if busy < 2 && u.needsDetails(s) {
 			busy++
 			u.fetchDetails(s)
 		}
-		if sb < 2 && !s.DetailAt.IsZero() && u.needsScores(s) {
+		if sb < 1 && !s.DetailAt.IsZero() && u.needsScores(s) {
 			sb++
 			u.fetchScores(s)
 		}

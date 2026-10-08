@@ -354,7 +354,7 @@ func fakeTMDB(t *testing.T) *httptest.Server {
 				"seasons":[{"season_number":0,"episode_count":2},{"season_number":1,"episode_count":8},{"season_number":2,"episode_count":8},{"season_number":3,"episode_count":8}],
 				"external_ids":{"tvdb_id":70000,"imdb_id":"tt0000001"},
 				"content_ratings":{"results":[{"iso_3166_1":"US","rating":"TV-MA"}]},
-				"aggregate_credits":{"cast":[{"name":"Ada Okafor","order":1,"total_episode_count":24,"roles":[{"character":"Captain"}]}]},
+				"credits":{"cast":[{"name":"Ada Okafor","order":1,"character":"Captain"}]},
 				"videos":{"results":[{"key":"abc","site":"YouTube","type":"Trailer","official":true,"iso_639_1":"en"}]},
 				"watch/providers":{"results":{"US":{"flatrate":[{"provider_id":1796,"provider_name":"Netflix basic with Ads"},{"provider_id":8,"provider_name":"Netflix"}]}}}}`)
 		default:
@@ -393,7 +393,7 @@ func TestTMDB(t *testing.T) {
 	if q.Get("with_watch_providers") != "8|1796" || q.Get("watch_region") != "US" {
 		t.Errorf("service query %v", q)
 	}
-	shows, err := env.Discover(ctx, lu[0], 40)
+	shows, err := env.Discover(ctx, lu[0], 40, nil)
 	if err != nil || len(shows) != 2 {
 		t.Fatalf("discover %v %d", err, len(shows))
 	}
@@ -403,6 +403,9 @@ func TestTMDB(t *testing.T) {
 	}
 	if s.TVDBID != 70000 || s.Cert != "TV-MA" || s.Trailer != "abc" || len(s.RealSeasons()) != 3 || s.Runtime != 52 {
 		t.Errorf("details %+v", s)
+	}
+	if len(s.Cast) != 1 || s.Cast[0].Role != "Captain" {
+		t.Errorf("cast from credits: %+v", s.Cast)
 	}
 	if strings.Join(s.Providers, ",") != "Netflix" {
 		t.Errorf("providers merged: %v", s.Providers)
@@ -544,7 +547,7 @@ func TestDiscoverFallback(t *testing.T) {
 	defer srv.Close()
 	env := &Env{Config: defaultConfig(), HTTP: srv.Client(), TMDBBase: srv.URL, Now: time.Now}
 	env.Config.TMDBKey = "k"
-	shows, err := env.Discover(context.Background(), &Channel{Num: 4, Name: "POPULAR", Kind: chPopular}, 40)
+	shows, err := env.Discover(context.Background(), &Channel{Num: 4, Name: "POPULAR", Kind: chPopular}, 40, nil)
 	if err != nil || len(shows) != 1 || len(queries) != 2 {
 		t.Fatalf("fallback: %v %d %v", err, len(shows), queries)
 	}
@@ -554,5 +557,26 @@ func TestDiscoverFallback(t *testing.T) {
 	q := env.channelQuery(&Channel{Kind: chGenre, Genre: 10767}, 1, false)
 	if q.Get("without_genres") != "10763|10766" {
 		t.Errorf("a genre channel doesn't exclude itself: %q", q.Get("without_genres"))
+	}
+}
+
+// While a channel is loading, details wait, so the listing isn't starved.
+func TestDetailsWaitForListing(t *testing.T) {
+	env := &Env{DataDir: t.TempDir(), Config: defaultConfig(), Now: time.Now}
+	u := NewUI(env, 640, 480)
+	demoScene(u, "guide")
+	for _, s := range u.shows {
+		s.DetailAt = time.Time{}
+	}
+	u.chLoading["new"] = true
+	u.dispatchDetails()
+	if len(u.detBusy) != 0 {
+		t.Errorf("details started while a channel was loading")
+	}
+	delete(u.chLoading, "new")
+	u.env.HTTP = &http.Client{Timeout: time.Millisecond}
+	u.dispatchDetails()
+	if len(u.detBusy) != 2 {
+		t.Errorf("two detail lookups at a time, got %d", len(u.detBusy))
 	}
 }

@@ -73,13 +73,19 @@ func (env *Env) tmdbGet(ctx context.Context, path string, q url.Values, v any) e
 		if isBearer(key) {
 			req.Header.Set("Authorization", "Bearer "+key)
 		}
+		t0 := time.Now()
 		resp, err := env.HTTP.Do(req)
 		if err != nil {
+			log.Printf("TMDB %s: attempt %d failed after %s: %v", path, attempt+1, time.Since(t0).Round(time.Millisecond), err)
 			if attempt < 2 && ctx.Err() == nil {
+				env.HTTP.CloseIdleConnections() // a stalled connection shouldn't be reused
 				time.Sleep(time.Duration(attempt+1) * time.Second)
 				continue
 			}
 			return err
+		}
+		if d := time.Since(t0); d > 5*time.Second {
+			log.Printf("TMDB %s: slow answer (%s)", path, d.Round(time.Millisecond))
 		}
 		body, err := io.ReadAll(io.LimitReader(resp.Body, 6<<20))
 		resp.Body.Close()
@@ -187,11 +193,11 @@ func (env *Env) channelQuery(ch *Channel, page int, plain bool) url.Values {
 
 // Discover lists a channel's shows, most popular first. If TMDB refuses the
 // full query or returns nothing, it tries again without the optional filters.
-func (env *Env) Discover(ctx context.Context, ch *Channel, max int) ([]*Show, error) {
-	out, err := env.discover(ctx, ch, max, false)
+func (env *Env) Discover(ctx context.Context, ch *Channel, max int, onPage func([]*Show)) ([]*Show, error) {
+	out, err := env.discover(ctx, ch, max, false, onPage)
 	if (err == nil && len(out) == 0) || retryPlain(err) {
 		log.Printf("CH %02d %s: %d shows, err=%v — retrying without the extra filters", ch.Num, ch.Name, len(out), err)
-		if out2, err2 := env.discover(ctx, ch, max, true); err2 == nil && len(out2) > 0 {
+		if out2, err2 := env.discover(ctx, ch, max, true, onPage); err2 == nil && len(out2) > 0 {
 			return out2, nil
 		} else if err == nil {
 			err = err2
@@ -211,15 +217,16 @@ func retryPlain(err error) bool {
 	return ae.Status != 401 && ae.Status != 429 && ae.Status < 500
 }
 
-func (env *Env) discover(ctx context.Context, ch *Channel, max int, plain bool) ([]*Show, error) {
+func (env *Env) discover(ctx context.Context, ch *Channel, max int, plain bool, onPage func([]*Show)) ([]*Show, error) {
 	var out []*Show
 	seen := map[int]bool{}
 	for page := 1; page <= 5 && len(out) < max; page++ {
 		var dp discoverTVPage
 		q := env.channelQuery(ch, page, plain)
+		t0 := time.Now()
 		err := env.tmdbGet(ctx, "/discover/tv", q, &dp)
 		q.Del("api_key")
-		log.Printf("CH %02d %s page %d: %d results, %d pages, err=%v [%s]", ch.Num, ch.Name, page, len(dp.Results), dp.TotalPages, err, q.Encode())
+		log.Printf("CH %02d %s page %d: %d results in %s, err=%v [%s]", ch.Num, ch.Name, page, len(dp.Results), time.Since(t0).Round(time.Millisecond), err, q.Encode())
 		if err != nil {
 			if len(out) > 0 {
 				break
@@ -238,6 +245,9 @@ func (env *Env) discover(ctx context.Context, ch *Channel, max int, plain bool) 
 			if len(out) >= max {
 				break
 			}
+		}
+		if onPage != nil && len(out) > 0 {
+			onPage(append([]*Show(nil), out...))
 		}
 		if page >= dp.TotalPages {
 			break
@@ -357,15 +367,11 @@ type tmdbShow struct {
 	} `json:"content_ratings"`
 	Credits struct {
 		Cast []struct {
-			Name  string `json:"name"`
-			Order int    `json:"order"`
-			Roles []struct {
-				Character string `json:"character"`
-				Episodes  int    `json:"episode_count"`
-			} `json:"roles"`
-			Episodes int `json:"total_episode_count"`
+			Name      string `json:"name"`
+			Character string `json:"character"`
+			Order     int    `json:"order"`
 		} `json:"cast"`
-	} `json:"aggregate_credits"`
+	} `json:"credits"` // the current cast; aggregate_credits can run to megabytes for long shows
 	Videos struct {
 		Results []tmdbVideo `json:"results"`
 	} `json:"videos"`
@@ -421,7 +427,7 @@ type tmdbProvider struct {
 func (env *Env) Details(ctx context.Context, s *Show) error {
 	q := url.Values{}
 	q.Set("language", env.Config.Language)
-	q.Set("append_to_response", "aggregate_credits,videos,content_ratings,watch/providers,external_ids")
+	q.Set("append_to_response", "credits,videos,content_ratings,watch/providers,external_ids")
 	lang := strings.SplitN(env.Config.Language, "-", 2)[0]
 	q.Set("include_video_language", lang+",en,null")
 	var d tmdbShow
@@ -493,22 +499,13 @@ func applyDetails(s *Show, d *tmdbShow, region string) {
 		}
 	}
 	cast := d.Credits.Cast
-	sort.SliceStable(cast, func(i, j int) bool {
-		if cast[i].Episodes != cast[j].Episodes {
-			return cast[i].Episodes > cast[j].Episodes
-		}
-		return cast[i].Order < cast[j].Order
-	})
+	sort.SliceStable(cast, func(i, j int) bool { return cast[i].Order < cast[j].Order })
 	s.Cast = s.Cast[:0]
 	for i, c := range cast {
 		if i == 10 {
 			break
 		}
-		role := ""
-		if len(c.Roles) > 0 {
-			role = c.Roles[0].Character
-		}
-		s.Cast = append(s.Cast, CastMember{Name: c.Name, Role: role})
+		s.Cast = append(s.Cast, CastMember{Name: c.Name, Role: c.Character})
 	}
 	s.Trailer = pickTrailer(d.Videos.Results)
 	s.Providers = s.Providers[:0]

@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,7 +17,7 @@ import (
 	"time"
 )
 
-const version = "0.1.1"
+const version = "0.1.2"
 const userAgent = "Cablebox/" + version + " (OnionOS TV guide)"
 
 // Config lives in App/Cablebox/data/config.json.
@@ -71,8 +72,13 @@ func newEnv() *Env {
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.MaxIdleConns = 8
 	tr.MaxIdleConnsPerHost = 4
-	tr.ResponseHeaderTimeout = 25 * time.Second
-	env.HTTP = &http.Client{Transport: tr, Timeout: 40 * time.Second}
+	tr.MaxConnsPerHost = 4
+	tr.ResponseHeaderTimeout = 20 * time.Second
+	// plain HTTP/1.1: one slow answer (a poster, a big details page) can't hold up
+	// everything else the way it can on a single shared HTTP/2 connection
+	tr.ForceAttemptHTTP2 = false
+	tr.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
+	env.HTTP = &http.Client{Transport: tr, Timeout: 30 * time.Second}
 	return env
 }
 

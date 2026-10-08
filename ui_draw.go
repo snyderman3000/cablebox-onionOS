@@ -351,8 +351,17 @@ func (u *UI) drawGuide(c *Canvas) {
 		c.Noise(u.px(10), u.listTop(), lw-u.px(14), listH, uint32(u.frame))
 		msg := fmt.Sprintf("TUNING CH %02d…", ch.Num)
 		w := u.fBig.Width(msg) + u.px(24)
-		c.Fill(u.px(10)+(lw-u.px(14)-w)/2, u.listTop()+listH/2-u.px(16), w, u.px(32), colGuide2)
+		bh := u.px(32)
+		slow := time.Since(u.chSince[ch.Key]) > 12*time.Second
+		if slow {
+			w = max(w, u.fTiny.Width("TMDB IS SLOW TO ANSWER — STILL TRYING")+u.px(24))
+			bh += u.fTiny.height + u.px(4)
+		}
+		c.Fill(u.px(10)+(lw-u.px(14)-w)/2, u.listTop()+listH/2-u.px(16), w, bh, colGuide2)
 		c.TextCenter(u.fBig, u.px(10)+(lw-u.px(14))/2, u.listTop()+listH/2-u.px(9), msg, colPaper)
+		if slow {
+			c.TextCenter(u.fTiny, u.px(10)+(lw-u.px(14))/2, u.listTop()+listH/2+u.px(14), "TMDB IS SLOW TO ANSWER — STILL TRYING", colYellow)
+		}
 	case n == 0 && ch != nil:
 		c.Noise(u.px(10), u.listTop(), lw-u.px(14), listH, uint32(u.frame/20))
 		bx, bw := u.px(22), lw-u.px(38)
