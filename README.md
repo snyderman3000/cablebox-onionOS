@@ -2,7 +2,7 @@
 
 **A TV guide that orders shows into Sonarr, for OnionOS on the Miyoo Mini Plus.** Cablebox lists TV shows on channels, like an 80s cable box tuned to the program guide: what's new, what's airing this week, what's popular, one channel per streaming service and one per genre. Every show has its IMDb rating, Rotten Tomatoes and Metacritic scores when they exist, seasons, cast, where it streams and a trailer you scan on your phone. Find one you want and order it: new episodes only, every episode, chosen seasons, or chosen episodes, and Sonarr does the rest.
 
-> 🤖 **Built by Claude.** Cablebox was designed and written by [Claude](https://claude.ai), Anthropic's AI model, at the request of [@snyderman3000](https://github.com/snyderman3000). He came up with the idea and chose the direction. Claude wrote the code, the documentation and the artwork. It's the TV sibling of [Rewind](https://github.com/snyderman3000/rewind) and shares its engine with [Mainframe](https://github.com/snyderman3000/mainframe), [Carrier](https://github.com/snyderman3000/carrier) and [Mixtape](https://github.com/snyderman3000/mixtape). Please report bugs through [Issues](https://github.com/snyderman3000/cablebox/issues).
+> 🤖 **Built by Claude.** Cablebox was designed and written by [Claude](https://claude.ai), Anthropic's AI model, at the request of [@snyderman3000](https://github.com/snyderman3000). He came up with the idea and chose the direction. Claude wrote the code, the documentation and the artwork. It's the TV sibling of [Rewind](https://github.com/snyderman3000/rewind) and shares its engine with [Carrier](https://github.com/snyderman3000/Carrier-onionOS) and [Mixtape](https://github.com/snyderman3000/mixtape). Please report bugs through [Issues](https://github.com/snyderman3000/cablebox-onionOS/issues).
 
 | | |
 |---|---|
@@ -29,7 +29,7 @@
 
 ## Install
 
-1. Download `Cablebox-vX.Y.Z-OnionOS.zip` from [Releases](https://github.com/snyderman3000/cablebox/releases).
+1. Download `Cablebox-vX.Y.Z-OnionOS.zip` from [Releases](https://github.com/snyderman3000/cablebox-onionOS/releases).
 2. Copy its `App` folder to the root of the SD card, merging it with the `App` folder already there.
 3. Keys: Cablebox uses the same free keys as Rewind. **If Rewind is installed and set up, Cablebox borrows its keys** and you can skip this. Otherwise copy `App/Cablebox/config.example.json` to `App/Cablebox/data/config.json` and add:
    - **TMDB** (required): [themoviedb.org/settings/api](https://www.themoviedb.org/settings/api)

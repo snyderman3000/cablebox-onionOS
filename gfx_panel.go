@@ -1,7 +1,7 @@
 package main
 
 // Carrier's widgets: the beige modem case and its LEDs, lamps, seven-segment
-// readouts, keycaps and QR codes. Shared lineage with Mainframe.
+// readouts, keycaps and QR codes. Shared with Carrier.
 
 import (
 	"image/color"

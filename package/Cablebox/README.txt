@@ -1,7 +1,7 @@
 CABLEBOX — TV guide and Sonarr remote for OnionOS (Miyoo Mini Plus)
 ==================================================================
 Built by Claude, Anthropic's AI model, for snyderman3000.
-Source, updates and bug reports: https://github.com/snyderman3000/cablebox
+Source, updates and bug reports: https://github.com/snyderman3000/cablebox-onionOS
 
 Cablebox lists TV shows on channels: search by name (CH 01), new series,
 on this week, popular,
