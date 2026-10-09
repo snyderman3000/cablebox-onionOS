@@ -3,7 +3,8 @@ CABLEBOX — TV guide and Sonarr remote for OnionOS (Miyoo Mini Plus)
 Built by Claude, Anthropic's AI model, for snyderman3000.
 Source, updates and bug reports: https://github.com/snyderman3000/cablebox
 
-Cablebox lists TV shows on channels: new series, on this week, popular,
+Cablebox lists TV shows on channels: search by name (CH 01), new series,
+on this week, popular,
 top rated, one channel per streaming service and one per genre. Each show
 has IMDb, Rotten Tomatoes and Metacritic scores when available, seasons,
 cast, where it streams and a trailer QR code. Order a show into Sonarr:
@@ -25,7 +26,10 @@ INSTALL
 CONTROLS
   GUIDE     Up/Down move · Left/Right page · A info · X order
             L1/R1 channel · L2/R2 group · START channel guide
-            Y sort · SELECT refresh · B off
+            SELECT search by name · Y sort · B off
+  SEARCH    D-pad move · A type · B delete · X space
+            START search · SELECT cancel (recent searches below)
+  CHANNEL GUIDE  A tune · X refresh that channel · B close
   DETAILS   X order/manage · Y trailer · Up/Down scroll
             L1/R1 previous/next · B back
   SEASONS   A tick · X all/none · START order · B back

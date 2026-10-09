@@ -180,6 +180,7 @@ const (
 	chTop
 	chService
 	chGenre
+	chSearch
 )
 
 type Channel struct {
@@ -190,6 +191,7 @@ type Channel struct {
 	Providers string // TMDB provider ids, "8|1796"
 	Genre     int
 	Group     string // NOW · SERVICES · GENRES
+	Query     string // the search channel's current search
 }
 
 var genreOrder = []struct {
@@ -204,6 +206,7 @@ var genreOrder = []struct {
 // Lineup builds the channel list: what's on now, one channel per service, one per genre.
 func Lineup(services []string, all []ServiceEntry, genres map[int]string) []*Channel {
 	chs := []*Channel{
+		{Num: 1, Key: "search", Name: "SEARCH", Kind: chSearch, Group: "NOW"},
 		{Num: 2, Key: "new", Name: "NEW SERIES", Kind: chNew, Group: "NOW"},
 		{Num: 3, Key: "airing", Name: "ON THIS WEEK", Kind: chAiring, Group: "NOW"},
 		{Num: 4, Key: "popular", Name: "POPULAR", Kind: chPopular, Group: "NOW"},
@@ -250,6 +253,19 @@ type Guide struct {
 	ServicesAt time.Time           `json:"services_at,omitzero"`
 	Channel    int                 `json:"channel"` // last channel watched
 	Sort       int                 `json:"sort"`
+	Search     string              `json:"search,omitempty"` // what CH 01 is showing
+	Recent     []string            `json:"recent,omitempty"` // recent searches, newest first
+}
+
+// AddRecent remembers a search, newest first, without repeats.
+func (g *Guide) AddRecent(q string) {
+	out := []string{q}
+	for _, r := range g.Recent {
+		if !strings.EqualFold(r, q) && len(out) < 5 {
+			out = append(out, r)
+		}
+	}
+	g.Recent = out
 }
 
 func newGuide() *Guide {

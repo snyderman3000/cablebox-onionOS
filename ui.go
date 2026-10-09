@@ -21,6 +21,7 @@ const (
 	scrDetail
 	scrLineup
 	scrPick
+	scrKeyboard
 	scrBye
 )
 
@@ -85,6 +86,7 @@ type UI struct {
 	target    *SonarrTarget
 	targetErr string
 
+	kb   keyboardState
 	ord  orderState
 	pick pickState
 	prog progressState
@@ -141,9 +143,13 @@ func (u *UI) Start() {
 	}
 	u.scr = scrGuide
 	u.rebuildLineup()
+	want := u.guide.Channel
+	if want == 0 {
+		want = 2 // first run: what's new
+	}
 	idx := 0
 	for i, ch := range u.lineup {
-		if ch.Num == u.guide.Channel {
+		if ch.Num == want {
 			idx = i
 		}
 	}
@@ -233,7 +239,12 @@ func (u *UI) tune(i int) {
 	u.reloadShows(0)
 	ch := u.channel()
 	l := u.guide.Lists[ch.Key]
-	if l == nil || len(l.IDs) == 0 || time.Since(l.At) > time.Duration(u.env.Config.RefreshHours)*time.Hour {
+	if ch.Kind == chSearch {
+		ch.Query = u.guide.Search
+		if ch.Query != "" && l == nil {
+			u.fetchChannel(ch, false)
+		}
+	} else if l == nil || len(l.IDs) == 0 || time.Since(l.At) > time.Duration(u.env.Config.RefreshHours)*time.Hour {
 		u.fetchChannel(ch, false)
 	}
 	if ch.Kind == chService && ch.Providers == "" && len(u.guide.Services) == 0 {
@@ -258,11 +269,18 @@ func (u *UI) reloadShows(keep int) {
 }
 
 func (u *UI) fetchChannel(ch *Channel, manual bool) {
-	if u.chLoading[ch.Key] {
+	// a new search replaces one still loading; other channels load once at a time
+	if u.chLoading[ch.Key] && ch.Kind != chSearch {
 		return
 	}
 	if ch.Kind == chService && ch.Providers == "" {
 		return
+	}
+	if ch.Kind == chSearch {
+		ch.Query = u.guide.Search
+		if ch.Query == "" {
+			return
+		}
 	}
 	u.chLoading[ch.Key] = true
 	u.chSince[ch.Key] = time.Now()
@@ -279,7 +297,7 @@ func (u *UI) fetchChannel(ch *Channel, manual bool) {
 			}
 			first = false
 			u.post <- func() {
-				if len(u.guide.ChannelShows(c.Key)) > 0 {
+				if u.staleSearch(&c) || len(u.guide.ChannelShows(c.Key)) > 0 {
 					return // keep the cached listing until the full one is in
 				}
 				u.guide.Merge(c.Key, part, time.Time{}) // zero time: still counts as stale
@@ -289,6 +307,9 @@ func (u *UI) fetchChannel(ch *Channel, manual bool) {
 			}
 		})
 		u.post <- func() {
+			if u.staleSearch(&c) {
+				return // the user has searched for something else since
+			}
 			delete(u.chLoading, c.Key)
 			if err != nil {
 				log.Printf("CH %02d %s failed: %v", c.Num, c.Name, err)
@@ -317,6 +338,11 @@ func (u *UI) fetchChannel(ch *Channel, manual bool) {
 			}
 		}
 	}()
+}
+
+// staleSearch: results for a search that's no longer the current one.
+func (u *UI) staleSearch(c *Channel) bool {
+	return c.Kind == chSearch && c.Query != u.guide.Search
 }
 
 func shortErr(s string) string {
@@ -650,6 +676,8 @@ func (u *UI) Key(k int) {
 		u.keyLineup(k)
 	case scrPick:
 		u.keyPick(k)
+	case scrKeyboard:
+		u.keyKeyboard(k)
 	}
 }
 
@@ -683,6 +711,8 @@ func (u *UI) keyGuide(k int) {
 	case BtnA:
 		if s := u.selected(); s != nil {
 			u.openDetail(s)
+		} else if ch := u.channel(); ch != nil && ch.Kind == chSearch {
+			u.openKeyboard()
 		}
 	case BtnX:
 		if s := u.selected(); s != nil {
@@ -701,14 +731,7 @@ func (u *UI) keyGuide(k int) {
 		u.scr = scrLineup
 		u.lineupSel = u.chIdx
 	case BtnSelect:
-		if ch := u.channel(); ch != nil {
-			u.showToast("REFRESHING CH " + fmt.Sprintf("%02d", ch.Num))
-			if ch.Kind == chService && ch.Providers == "" {
-				u.refreshMeta(true)
-			}
-			u.fetchChannel(ch, true)
-			u.syncSonarr()
-		}
+		u.openKeyboard()
 	case BtnB:
 		u.quit = true
 	}
@@ -785,6 +808,20 @@ func (u *UI) keyDetail(k int) {
 	}
 }
 
+// refreshChannel reloads the channel on screen now, and Sonarr's library.
+func (u *UI) refreshChannel() {
+	ch := u.channel()
+	if ch == nil {
+		return
+	}
+	u.showToast("REFRESHING CH " + fmt.Sprintf("%02d", ch.Num))
+	if ch.Kind == chService && ch.Providers == "" {
+		u.refreshMeta(true)
+	}
+	u.fetchChannel(ch, true)
+	u.syncSonarr()
+}
+
 func (u *UI) keyLineup(k int) {
 	n := len(u.lineup)
 	rows := u.lineupRows()
@@ -800,6 +837,12 @@ func (u *UI) keyLineup(k int) {
 	case BtnA:
 		u.scr = scrGuide
 		u.tune(u.lineupSel)
+	case BtnX:
+		u.scr = scrGuide
+		u.tune(u.lineupSel)
+		u.refreshChannel()
+	case BtnSelect:
+		u.openKeyboard()
 	case BtnB, BtnStart:
 		u.scr = scrGuide
 	}

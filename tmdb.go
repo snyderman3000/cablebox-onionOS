@@ -195,6 +195,9 @@ func (env *Env) channelQuery(ch *Channel, page int, plain bool) url.Values {
 // Discover lists a channel's shows, most popular first. If TMDB refuses the
 // full query or returns nothing, it tries again without the optional filters.
 func (env *Env) Discover(ctx context.Context, ch *Channel, max int, onPage func([]*Show)) ([]*Show, error) {
+	if ch.Kind == chSearch {
+		return env.Search(ctx, ch.Query, max, onPage)
+	}
 	out, err := env.discover(ctx, ch, max, false, onPage)
 	if (err == nil && len(out) == 0) || retryPlain(err) {
 		log.Printf("CH %02d %s: %d shows, err=%v — retrying without the extra filters", ch.Num, ch.Name, len(out), err)
@@ -219,15 +222,28 @@ func retryPlain(err error) bool {
 }
 
 func (env *Env) discover(ctx context.Context, ch *Channel, max int, plain bool, onPage func([]*Show)) ([]*Show, error) {
+	label := fmt.Sprintf("CH %02d %s", ch.Num, ch.Name)
+	return env.pages(ctx, label, "/discover/tv", func(page int) url.Values { return env.channelQuery(ch, page, plain) }, max, onPage)
+}
+
+// Search finds shows by name.
+func (env *Env) Search(ctx context.Context, query string, max int, onPage func([]*Show)) ([]*Show, error) {
+	return env.pages(ctx, "SEARCH "+strconv.Quote(query), "/search/tv", func(page int) url.Values {
+		return url.Values{"query": {query}, "language": {env.Config.Language}, "include_adult": {"false"}, "page": {strconv.Itoa(page)}}
+	}, max, onPage)
+}
+
+// pages reads up to max shows from a paged TMDB list (discover or search).
+func (env *Env) pages(ctx context.Context, label, path string, query func(page int) url.Values, max int, onPage func([]*Show)) ([]*Show, error) {
 	var out []*Show
 	seen := map[int]bool{}
 	for page := 1; page <= 5 && len(out) < max; page++ {
 		var dp discoverTVPage
-		q := env.channelQuery(ch, page, plain)
+		q := query(page)
 		t0 := time.Now()
-		err := env.tmdbGet(ctx, "/discover/tv", q, &dp)
+		err := env.tmdbGet(ctx, path, q, &dp)
 		q.Del("api_key")
-		log.Printf("CH %02d %s page %d: %d results in %s, err=%v [%s]", ch.Num, ch.Name, page, len(dp.Results), time.Since(t0).Round(time.Millisecond), err, q.Encode())
+		log.Printf("%s page %d: %d results in %s, err=%v [%s]", label, page, len(dp.Results), time.Since(t0).Round(time.Millisecond), err, q.Encode())
 		if err != nil {
 			if len(out) > 0 {
 				break

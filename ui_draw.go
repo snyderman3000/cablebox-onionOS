@@ -44,6 +44,8 @@ func (u *UI) Draw(c *Canvas) {
 		u.drawLineup(c)
 	case scrPick:
 		u.drawPick(c)
+	case scrKeyboard:
+		u.drawKeyboard(c)
 	}
 	switch u.modal {
 	case modalMsg:
@@ -111,6 +113,8 @@ func (u *UI) drawBox(c *Canvas) {
 	switch {
 	case u.scr == scrSetup:
 		name = "SETUP"
+	case u.scr == scrKeyboard:
+		name = "SEARCH"
 	case u.channel() != nil:
 		name = u.channel().Name
 	}
@@ -147,6 +151,9 @@ func (u *UI) drawBox(c *Canvas) {
 	num := "--"
 	if ch := u.channel(); ch != nil && u.scr != scrSetup {
 		num = fmt.Sprintf("%02d", ch.Num)
+	}
+	if u.scr == scrKeyboard {
+		num = "01"
 	}
 	dw, dh, t := u.px(17), u.px(28), max(2, u.px(3))
 	sw := Seg7Width(dw, t, num)
@@ -314,7 +321,11 @@ func (u *UI) drawGuide(c *Canvas) {
 		c.Fill(u.px(10), top+u.px(4), tw, u.headH()-u.px(8), colYellow)
 		c.Text(u.fLCD, u.px(18), top+u.px(4), tag, colGuide2)
 		x := c.Text(u.fBig, u.px(18)+tw, top+u.px(8), ch.Name, colPaper)
-		c.Text(u.fTiny, x+u.px(10), top+u.px(12), ch.Group, colPaperFt)
+		if ch.Kind == chSearch && u.guide.Search != "" {
+			c.Text(u.fSmall, x+u.px(10), top+u.px(9), u.fSmall.Ellipsize("\""+strings.ToUpper(u.guide.Search)+"\"", c.W-x-u.px(150)), colYellow)
+		} else {
+			c.Text(u.fTiny, x+u.px(10), top+u.px(12), ch.Group, colPaperFt)
+		}
 	}
 	info := fmt.Sprintf("%d SHOWS", len(u.shows))
 	if u.guide.Sort != 0 {
@@ -363,10 +374,20 @@ func (u *UI) drawGuide(c *Canvas) {
 			c.TextCenter(u.fTiny, u.px(10)+(lw-u.px(14))/2, u.listTop()+listH/2+u.px(14), "TMDB IS SLOW TO ANSWER — STILL TRYING", colYellow)
 		}
 	case n == 0 && ch != nil:
-		c.Noise(u.px(10), u.listTop(), lw-u.px(14), listH, uint32(u.frame/20))
+		if ch.Kind != chSearch {
+			c.Noise(u.px(10), u.listTop(), lw-u.px(14), listH, uint32(u.frame/20))
+		}
 		bx, bw := u.px(22), lw-u.px(38)
 		lines := []string{"Nothing on this channel."}
 		title := "NO SIGNAL"
+		if ch.Kind == chSearch {
+			title = "SEARCH"
+			msg := "Press SELECT (or A) and type a show's name."
+			if u.guide.Search != "" {
+				msg = fmt.Sprintf("No shows called \"%s\". Press SELECT to try another name.", u.guide.Search)
+			}
+			lines = u.fSmall.Wrap(msg, bw-u.px(20))
+		}
 		if e := u.chErr[ch.Key]; e != "" {
 			lines = u.fSmall.Wrap(sentence(e), bw-u.px(20))
 		} else if ch.Kind == chService && ch.Providers == "" {
@@ -376,7 +397,9 @@ func (u *UI) drawGuide(c *Canvas) {
 			}
 			lines = u.fSmall.Wrap(why, bw-u.px(20))
 		}
-		lines = append(lines, "", "SELECT tries again.")
+		if ch.Kind != chSearch {
+			lines = append(lines, "", "START, then X on this channel, tries again.")
+		}
 		bh := u.px(46) + len(lines)*(u.fSmall.height+u.px(2))
 		by := u.listTop() + (listH-bh)/2
 		c.Fill(bx, by, bw, bh, colGuide2)
@@ -403,7 +426,7 @@ func (u *UI) drawGuide(c *Canvas) {
 	if u.env.SonarrOn() {
 		items = append(items, [2]string{"X", "ORDER"})
 	}
-	u.keys(c, append(items, [2]string{"L1·R1", "CHANNEL"}, [2]string{"START", "GUIDE"}, [2]string{"Y", "SORT"}, [2]string{"B", "OFF"}))
+	u.keys(c, append(items, [2]string{"L1·R1", "CHANNEL"}, [2]string{"START", "GUIDE"}, [2]string{"SELECT", "SEARCH"}, [2]string{"Y", "SORT"}, [2]string{"B", "OFF"}))
 }
 
 func (u *UI) drawRow(c *Canvas, s *Show, x, y, w, h int, sel bool) {
@@ -687,7 +710,7 @@ func (u *UI) drawLineup(c *Canvas) {
 			c.TextRight(u.fSmall, x+cw-u.px(12), y+u.px(5), "◀", fg)
 		}
 	}
-	u.keys(c, [][2]string{{"A", "TUNE"}, {"↕", "MOVE"}, {"◀▶", "COLUMN"}, {"B", "CLOSE"}})
+	u.keys(c, [][2]string{{"A", "TUNE"}, {"X", "REFRESH"}, {"SELECT", "SEARCH"}, {"↕◀▶", "MOVE"}, {"B", "CLOSE"}})
 }
 
 // ---------- overlays ----------

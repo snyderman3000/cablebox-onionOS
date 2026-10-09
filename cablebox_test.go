@@ -346,6 +346,12 @@ func fakeTMDB(t *testing.T) *httptest.Server {
 			}
 			js(`{"page":1,"total_pages":1,"results":[{"id":8000,"name":"Harbor Lights","first_air_date":"2023-03-14","vote_average":8.1,"vote_count":400,"genre_ids":[80]},
 				{"id":8001,"name":"Cold Open","first_air_date":"2025-01-02","vote_average":7.5,"vote_count":200}]}`)
+		case r.URL.Path == "/search/tv":
+			if r.URL.Query().Get("query") == "harbor" {
+				js(`{"page":1,"total_pages":1,"results":[{"id":8000,"name":"Harbor Lights","first_air_date":"2023-03-14"}]}`)
+			} else {
+				js(`{"page":1,"total_pages":0,"results":[]}`)
+			}
 		case strings.HasPrefix(r.URL.Path, "/tv/8000/season/"):
 			js(`{"episodes":[{"season_number":2,"episode_number":1,"name":"Low Tide","air_date":"2024-03-14"},{"season_number":2,"episode_number":2,"name":"Fog Horn","air_date":"2024-03-21"}]}`)
 		case strings.HasPrefix(r.URL.Path, "/tv/"):
@@ -389,11 +395,11 @@ func TestTMDB(t *testing.T) {
 	if strings.Join(names, ",") != "NETFLIX,HBO MAX,PARAMOUNT+" {
 		t.Errorf("services offered in the region only: %v", names)
 	}
-	q := env.channelQuery(lu[4], 1, false)
+	q := env.channelQuery(lu[5], 1, false)
 	if q.Get("with_watch_providers") != "8|1796" || q.Get("watch_region") != "US" {
 		t.Errorf("service query %v", q)
 	}
-	shows, err := env.Discover(ctx, lu[0], 40, nil)
+	shows, err := env.Discover(ctx, lu[1], 40, nil)
 	if err != nil || len(shows) != 2 {
 		t.Fatalf("discover %v %d", err, len(shows))
 	}
@@ -441,7 +447,7 @@ func TestBorrowRewindKeys(t *testing.T) {
 
 func TestScenesDraw(t *testing.T) {
 	scenes := []string{"guide", "tune", "loading", "detail", "detail-owned", "lineup", "order", "manage", "seasons", "episodes",
-		"progress", "done", "trailer", "nosonarr", "setup", "bye"}
+		"progress", "done", "trailer", "nosonarr", "setup", "bye", "keyboard", "search", "search-empty"}
 	for _, size := range [][2]int{{640, 480}, {752, 560}} {
 		for _, s := range scenes {
 			env := &Env{DataDir: t.TempDir(), Config: defaultConfig(), Now: time.Now}
@@ -606,5 +612,61 @@ func TestTransportAgainstHTTP2Server(t *testing.T) {
 	b, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(b), "HTTP/1.1") {
 		t.Errorf("expected HTTP/1.1, got %s", b)
+	}
+}
+
+// SELECT opens the keyboard; typing a name and START tunes CH 01 to the results.
+func TestSearchFlow(t *testing.T) {
+	tm := fakeTMDB(t)
+	defer tm.Close()
+	env := &Env{DataDir: t.TempDir(), Config: defaultConfig(), HTTP: &http.Client{}, TMDBBase: tm.URL, ImageBase: tm.URL + "/img/", Now: time.Now}
+	env.Config.TMDBKey = "k"
+	u := NewUI(env, 640, 480)
+	u.Start()
+	if u.channel().Num != 2 {
+		t.Errorf("first run starts on CH 02, not %d", u.channel().Num)
+	}
+	drain(t, u, func() bool { return len(u.shows) == 2 })
+	u.Key(BtnSelect)
+	if u.scr != scrKeyboard {
+		t.Fatalf("SELECT opens the keyboard")
+	}
+	// H is row 0, col 7
+	type key struct{ row, col int }
+	for _, k := range []key{{0, 7}, {0, 0}, {1, 7}, {0, 1}, {1, 4}, {1, 7}, {1, 7}} { // H A R B O R R
+		u.kb.row, u.kb.col = k.row, k.col
+		u.Key(BtnA)
+	}
+	u.Key(BtnB) // delete the extra R
+	if u.kb.text != "HARBOR" {
+		t.Fatalf("typed %q", u.kb.text)
+	}
+	u.kb.text = "harbor"
+	u.Key(BtnStart)
+	if u.scr != scrGuide || u.channel().Kind != chSearch {
+		t.Fatalf("START tunes the search channel")
+	}
+	drain(t, u, func() bool { return len(u.shows) == 1 })
+	if u.shows[0].Name != "Harbor Lights" || u.guide.Recent[0] != "harbor" {
+		t.Errorf("results %v recent %v", u.shows[0].Name, u.guide.Recent)
+	}
+	// a search with no results says so (and isn't stuck loading)
+	u.Key(BtnSelect)
+	u.kb.text = "zzz"
+	u.Key(BtnStart)
+	drain(t, u, func() bool { return !u.chLoading["search"] })
+	if len(u.shows) != 0 {
+		t.Errorf("no results expected: %v err=%q scr=%v ch=%s", len(u.shows), u.chErr["search"], u.scr, u.channel().Name)
+	}
+	// recent searches are one press away
+	u.Key(BtnSelect)
+	u.kb.row = len(kbRows) + 2 // second recent: "harbor"
+	u.Key(BtnA)
+	drain(t, u, func() bool { return len(u.shows) == 1 })
+	// channel surfing past CH 01 doesn't pop up the keyboard
+	u.Key(BtnR1)
+	u.Key(BtnL1)
+	if u.scr != scrGuide {
+		t.Errorf("surfing onto CH 01 should stay in the guide")
 	}
 }

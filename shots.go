@@ -171,6 +171,28 @@ func demoScene(u *UI, scene string) {
 		u.modal = modalTrailer
 	case "nosonarr":
 		u.message("NO SONARR CONNECTED", colYellow, "To order shows, add your Sonarr to App/Cablebox/data/config.json:\n\n\"sonarr_url\": \"192.168.4.34:8989\",\n\"sonarr_api_key\": \"from Sonarr → Settings → General\"")
+	case "keyboard":
+		u.guide.Recent = []string{"harbor", "cold open", "static valley"}
+		u.openKeyboard()
+		u.kb.text = "QUIET FREQ"
+		u.kb.row, u.kb.col = 0, 4
+	case "search":
+		ids := []int{8006, 8000, 8002}
+		u.guide.Lists["search"] = &Listing{IDs: ids, At: time.Now()}
+		u.guide.Search = "frequency"
+		for i, ch := range u.lineup {
+			if ch.Kind == chSearch {
+				u.chIdx = i
+			}
+		}
+		u.shows = u.guide.ChannelShows("search")
+	case "search-empty":
+		for i, ch := range u.lineup {
+			if ch.Kind == chSearch {
+				u.chIdx = i
+			}
+		}
+		u.shows = nil
 	case "setup":
 		u.scr = scrSetup
 	case "bye":

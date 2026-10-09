@@ -14,6 +14,7 @@
 
 ## Features
 
+- **Search.** SELECT opens an on-screen keyboard: type part of a show's name and CH 01 tunes to the matches. Your last five searches are one press away.
 - **Channels.** 02 NEW SERIES (premiered in the last four months), 03 ON THIS WEEK (new episodes in the past week), 04 POPULAR, 05 TOP RATED, then one channel per streaming service (Netflix, Hulu, Prime Video, Disney+, HBO Max, Apple TV, Paramount+, Peacock by default) and one per genre (Drama, Comedy, Crime, Sci-Fi & Fantasy, Mystery, Animation, Documentary, Reality and more). Everything listed streams on a subscription or free service in your region.
 - **Channel surfing.** L1/R1 change channel with a burst of static, L2/R2 jump between the now/services/genres groups, START opens the full channel guide.
 - **The details.** IMDb rating and vote count, Rotten Tomatoes and Metacritic when OMDb has them (less often for TV than for films), TMDB score, status and next air date, seasons and episodes, rating, runtime, services, network, genres, creators, cast and synopsis. Y shows a QR code that opens the trailer on your phone.
@@ -46,9 +47,10 @@ Requires OnionOS 4.2 or newer and Wi-Fi. Ordering needs the Miyoo on the same ne
 
 | Screen | Buttons |
 |---|---|
-| Guide | ↑↓ move · ←→ page · **A** info · **X** order · **L1/R1** channel down/up · **L2/R2** previous/next group · **START** channel guide · **Y** sort · **SELECT** refresh channel · **B** off |
+| Guide | ↑↓ move · ←→ page · **A** info · **X** order · **L1/R1** channel down/up · **L2/R2** previous/next group · **START** channel guide · **SELECT** search · **Y** sort · **B** off |
+| Search keyboard | d-pad move · **A** type the key · **B** delete · **X** space · **START** search · **SELECT** cancel · recent searches are below the keys |
 | Details | **X** order (or manage) · **Y** trailer QR · ↑↓ scroll synopsis · **L1/R1** previous/next show · **B** back |
-| Channel guide | ↑↓ move · ←→ column · **A** tune · **B** close |
+| Channel guide | ↑↓ move · ←→ column · **A** tune · **X** refresh that channel now · **SELECT** search · **B** close |
 | Choose seasons | ↑↓ move · **A** tick · **X** all/none · **START** order · **B** back |
 | Choose episodes | ↑↓ move · ←→ or **L1/R1** season · **A** tick · **X** whole season · **START** order · **B** back |
 
